@@ -1,0 +1,14 @@
+version: "3.9"
+
+services:
+  bot:
+    build: .
+    container_name: flightwatch-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - TZ=Europe/Moscow
+    volumes:
+      - ./data/trackers.db:/app/trackers.db
+    network_mode: host
