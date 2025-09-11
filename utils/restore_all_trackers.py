@@ -18,7 +18,8 @@ async def restore_all_trackers():
                 tracker["origin"],
                 tracker["destination"],
                 tracker["date"],
-                tracker["price_limit"]
+                tracker["price_limit"],
+                tracker_id=tracker["tracker_id"]
             )
         )
         user_tasks[telegram_id].append(task)

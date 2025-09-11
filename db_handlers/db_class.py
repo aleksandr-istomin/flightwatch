@@ -36,6 +36,15 @@ class Database:
                 FOREIGN KEY(user_id) REFERENCES users(id)
             )
         """)
+        # Добавляем колонку last_sent_price при необходимости
+        try:
+            async with self.db.execute("PRAGMA table_info('flight_trackers')") as cursor:
+                cols = [row[1] async for row in cursor]
+            if "last_sent_price" not in cols:
+                await self.db.execute("ALTER TABLE flight_trackers ADD COLUMN last_sent_price INTEGER")
+        except Exception:
+            # Тихо игнорируем, если не удалось (например, старая SQLite)
+            pass
         await self.db.commit()
 
     async def add_user(self, telegram_id: int, username: str = None):
@@ -51,12 +60,13 @@ class Database:
         await self.db.commit()
         return cursor.lastrowid
 
-    async def add_flight_tracker(self, user_id: int, origin: str, destination: str, date: str, price_limit: int):
-        await self.db.execute("""
+    async def add_flight_tracker(self, user_id: int, origin: str, destination: str, date: str, price_limit: int) -> int:
+        cursor = await self.db.execute("""
             INSERT INTO flight_trackers (user_id, origin, destination, date, price_limit, active)
             VALUES (?, ?, ?, ?, ?, 1)
         """, (user_id, origin, destination, date, price_limit))
         await self.db.commit()
+        return cursor.lastrowid
 
     async def get_active_trackers(self):
         trackers = []
@@ -115,6 +125,23 @@ class Database:
 
     async def deactivate_all_user_trackers(self, user_id: int):
         await self.db.execute("UPDATE flight_trackers SET active = 0 WHERE user_id = ?", (user_id,))
+        await self.db.commit()
+
+    async def get_last_sent_price(self, tracker_id: int):
+        async with self.db.execute(
+            "SELECT last_sent_price FROM flight_trackers WHERE id = ?",
+            (tracker_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            return row[0]
+
+    async def update_last_sent_price(self, tracker_id: int, price: int):
+        await self.db.execute(
+            "UPDATE flight_trackers SET last_sent_price = ? WHERE id = ?",
+            (int(price), tracker_id)
+        )
         await self.db.commit()
 
 

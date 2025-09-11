@@ -174,7 +174,7 @@ async def track_command(message: types.Message):
                 continue
 
             # 5) всё ок — добавляем в БД и запускаем таск
-            await db.add_flight_tracker(user_id, origin, destination, date, price_limit)
+            tracker_id = await db.add_flight_tracker(user_id, origin, destination, date, price_limit)
 
             user_tasks.setdefault(message.from_user.id, [])
             task = asyncio.create_task(
@@ -184,7 +184,8 @@ async def track_command(message: types.Message):
                     destination,
                     date,
                     price_limit,
-                    initial_flight=flight  # если track_flight поддерживает этот параметр
+                    tracker_id=tracker_id,
+                    initial_flight=flight
                 )
             )
             user_tasks[message.from_user.id].append(task)
