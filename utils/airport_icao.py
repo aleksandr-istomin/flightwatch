@@ -9052,8 +9052,23 @@ airport_icao = {
 
 
 def get_airport_city_name_by_icao(code: str) -> tuple[str, str]:
-    """Возвращает (city, name) по ICAO. Если код неизвестен — ("", "")."""
-    value = airport_icao.get((code or "").upper())
+    """Возвращает (city, name) по ICAO, сначала пытаясь прочитать из Redis.
+
+    При недоступности Redis или отсутствии ключа — фолбэк к локальному словарю.
+    """
+    code_safe = (code or "").upper()
+    # Попытка чтения из Redis
+    try:
+        from utils.redis_client import get_redis
+        r = get_redis()
+        data = r.hgetall(f"icao:airport:{code_safe}")
+        if isinstance(data, dict) and data:
+            return (data.get("city", "") or "", data.get("name", "") or "")
+    except Exception:
+        pass
+
+    # Фолбэк к локальному словарю
+    value = airport_icao.get(code_safe)
     if not value:
         return "", ""
     return value

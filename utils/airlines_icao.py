@@ -5857,8 +5857,18 @@ airlines_icao = {
 
 
 def get_airline_by_icao(code: str) -> tuple[str, str]:
-    """Возвращает (name, country) по ICAO авиакомпании. Если код неизвестен — ("", "")."""
-    value = airlines_icao.get((code or "").upper())
+    """Возвращает (name, country) по ICAO авиакомпании, пробуя Redis, затем локальный словарь."""
+    code_safe = (code or "").upper()
+    try:
+        from utils.redis_client import get_redis
+        r = get_redis()
+        data = r.hgetall(f"icao:airline:{code_safe}")
+        if isinstance(data, dict) and data:
+            return (data.get("name", "") or "", data.get("country", "") or "")
+    except Exception:
+        pass
+
+    value = airlines_icao.get(code_safe)
     if not value:
         return "", ""
     return value
