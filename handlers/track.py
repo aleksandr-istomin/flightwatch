@@ -164,7 +164,14 @@ async def handle_history_flight_number(message: types.Message, state: FSMContext
         dep_label = f"{dep_city} ({dep_name})" if dep_city or dep_name else (dep.get('icao', '—'))
         arr_label = f"{arr_city} ({arr_name})" if arr_city or arr_name else (arr.get('icao', '—'))
 
-        airline_line = item.get('airline', '')
+        # Преобразуем авиакомпанию как в статусе рейса: если пришёл ICAO-код (3 буквы) — маппим на название из Redis
+        airline_raw = str(item.get('airline', '') or '').strip()
+        airline_line = f"{airline_raw}"
+        maybe_code = airline_raw.upper()
+        if len(maybe_code) == 3 and maybe_code.isalpha():
+            name, country = get_airline_by_icao(maybe_code)
+            if name or country:
+                airline_line = f"{name}{f' ({country})' if country else ''}"
         flight_num = item.get('flight_number', flight_number)
 
         duration_line = ""
