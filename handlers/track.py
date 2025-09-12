@@ -140,7 +140,7 @@ async def handle_history_flight_number(message: types.Message, state: FSMContext
         return
 
     await message.answer("⏳ Загружаю историю рейсов...")
-    history = await get_flight_history_by_number(flight_number, days=14)
+    history = await get_flight_history_by_number(flight_number, days=5)
     await state.clear()
 
     if not history:
@@ -226,7 +226,19 @@ async def handle_history_flight_number(message: types.Message, state: FSMContext
         if count >= 12:
             break
 
-    await message.answer("\n\n".join(lines))
+    # Отправляем историю частями, чтобы не превысить лимит Telegram (~4096 символов)
+    CHUNK_LIMIT = 3500
+    buffer = ""
+    for idx, block in enumerate(lines):
+        text = ("\n\n" if buffer else "") + block
+        if len(buffer) + len(text) > CHUNK_LIMIT:
+            if buffer:
+                await message.answer(buffer)
+            buffer = block
+        else:
+            buffer += text
+    if buffer:
+        await message.answer(buffer)
 
 
 def _fmt_dt(value: str) -> str:
