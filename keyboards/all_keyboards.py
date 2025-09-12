@@ -37,6 +37,9 @@ tracking_menu = ReplyKeyboardMarkup(
             KeyboardButton(text="🛫 Статус рейса"),
         ],
         [
+            KeyboardButton(text="🕓 История полётов рейса"),
+        ],
+        [
             KeyboardButton(text="⬅ Назад"),
         ]
     ],

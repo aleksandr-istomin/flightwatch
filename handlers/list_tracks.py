@@ -36,7 +36,7 @@ async def list_user_trackers(message: types.Message, state: FSMContext):
         kb_rows = []
         for t in trackers:
             title = (
-                f"{get_airport_name(t['origin'])} → {get_airport_name(t['destination'])} | "
+                f"(Удалить){get_airport_name(t['origin'])} → {get_airport_name(t['destination'])} | "
                 f"{format_iso_date_to_user(t['date'][0])} | ≤ {format_price(t['price_limit'])} {CURRENCY.upper()}"
             )
             kb_rows.append([

@@ -23,6 +23,10 @@ class FlightStatusFSM(StatesGroup):
     waiting_flight_number = State()
 
 
+class FlightHistoryFSM(StatesGroup):
+    waiting_flight_number = State()
+
+
 class TrackFSM(StatesGroup):
     waiting_origin_city = State()
     waiting_destination_city = State()
@@ -118,6 +122,129 @@ async def handle_flight_number(message: types.Message, state: FSMContext):
         except Exception:
             # Молча игнорируем ошибки с внешним сервисом карт, чтобы не мешать основному сценарию
             pass
+
+
+@router.message(lambda msg: msg.text == "🕓 История полётов рейса")
+async def ask_history_flight_number(message: types.Message, state: FSMContext):
+    await state.set_state(FlightHistoryFSM.waiting_flight_number)
+    await message.answer("Введите номер рейса для отображения истории, например: <b>SU100</b>")
+
+
+@router.message(FlightHistoryFSM.waiting_flight_number)
+async def handle_history_flight_number(message: types.Message, state: FSMContext):
+    from utils.flightradar_client import get_flight_history_by_number
+
+    flight_number = (message.text or "").strip().upper().replace(" ", "")
+    if not flight_number or len(flight_number) < 3:
+        await message.answer("❗ Укажите корректный номер рейса, например: <b>SU100</b>")
+        return
+
+    await message.answer("⏳ Загружаю историю рейсов...")
+    history = await get_flight_history_by_number(flight_number, days=14)
+    await state.clear()
+
+    if not history:
+        await message.answer("⚠️ История рейсов не найдена. Попробуйте другой номер.")
+        return
+
+    # Ограничим вывод первыми 12 записями, оформив как в статусе рейса
+    lines = []
+    count = 0
+    for item in history:
+        dep = item.get("departure", {})
+        arr = item.get("arrival", {})
+        aircraft = item.get("aircraft", {})
+        delay = item.get("delay", {})
+
+        dep_city = dep.get('city', '')
+        dep_name = dep.get('name', '')
+        arr_city = arr.get('city', '')
+        arr_name = arr.get('name', '')
+
+        dep_label = f"{dep_city} ({dep_name})" if dep_city or dep_name else (dep.get('icao', '—'))
+        arr_label = f"{arr_city} ({arr_name})" if arr_city or arr_name else (arr.get('icao', '—'))
+
+        airline_line = item.get('airline', '')
+        flight_num = item.get('flight_number', flight_number)
+
+        duration_line = ""
+        if item.get('duration_min') is not None:
+            duration_line = f"• ⏱ длительность: {_fmt_minutes_to_hhmm(item['duration_min'])}"
+
+        delay_dep_line = ""
+        if delay.get('departure_min') is not None:
+            dd = delay['departure_min']
+            sign = "+" if dd and dd > 0 else ""
+            delay_dep_line = f"• ⌛ отклонение вылета: {sign}{dd} мин"
+
+        delay_arr_line = ""
+        if delay.get('arrival_min') is not None:
+            da = delay['arrival_min']
+            sign = "+" if da and da > 0 else ""
+            delay_arr_line = f"• ⌛ отклонение прилёта: {sign}{da} мин"
+
+        distance_line = ""
+        if item.get('distance_km') is not None:
+            distance_line = f"• 📏 дистанция: {item['distance_km']} км"
+
+        ac_parts = []
+        if aircraft.get('model'):
+            ac_parts.append(aircraft['model'])
+        if aircraft.get('icao'):
+            ac_parts.append(aircraft['icao'])
+        if aircraft.get('registration'):
+            ac_parts.append(aircraft['registration'])
+        aircraft_line = f"🛩 Самолёт: {' / '.join(ac_parts)}" if ac_parts else ""
+
+        text = (
+            f"✈️ Рейс <b>{flight_num}</b>\n"
+            f"🏷 Авиакомпания: {airline_line}\n"
+            f"────────────────────────\n"
+            f"🛫 <b>Вылет:</b> {dep_label}\n"
+            f"• 📅 по расписанию: {_fmt_dt(dep.get('scheduled',''))}\n"
+            f"• ⏱ фактически: {_fmt_dt(dep.get('actual',''))}\n"
+            f"🛬 <b>Прилет:</b> {arr_label}\n"
+            f"• 📅 по расписанию: {_fmt_dt(arr.get('scheduled',''))}\n"
+            f"• ⏱ фактически: {_fmt_dt(arr.get('actual',''))}\n"
+            f"{duration_line}\n"
+            f"{delay_dep_line}\n"
+            f"{delay_arr_line}\n"
+            f"{distance_line}\n"
+            f"{aircraft_line}"
+        )
+        # Удалим пустые строки
+        text = "\n".join([ln for ln in text.splitlines() if ln.strip()])
+        lines.append(text)
+        count += 1
+        if count >= 12:
+            break
+
+    await message.answer("\n\n".join(lines))
+
+
+def _fmt_dt(value: str) -> str:
+    s = str(value or "").strip()
+    if not s:
+        return ""
+    try:
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        dt = datetime.fromisoformat(s)
+        return dt.strftime("%d-%m-%Y %H:%M")
+    except Exception:
+        return value
+
+
+def _fmt_minutes_to_hhmm(total_min):
+    try:
+        m = int(total_min)
+    except Exception:
+        return ""
+    if m < 0:
+        m = -m
+    h = m // 60
+    mm = m % 60
+    return f"{h:02d}:{mm:02d}"
 
 @router.message(Command("track"))
 async def track_command(message: types.Message):
