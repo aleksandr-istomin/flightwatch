@@ -6,11 +6,11 @@ import asyncio
 from datetime import datetime
 
 from db_handlers.db_class import db
-from handlers.task import user_tasks
+from handlers.task import user_tasks, tracker_tasks
 from utils.track_flight import track_flight
 from utils.airport_codes import get_airport_name, find_airports_by_city, format_airport_option
 from utils.aviasales_api import CURRENCY, get_price_for_date
-from utils.validators import is_valid_date
+from utils.validators import is_valid_date, parse_user_date_to_iso, format_iso_date_to_user, format_price
 from utils.flightradar_client import get_flight_status_by_number
 from utils.airlines_icao import get_airline_by_icao
 
@@ -129,7 +129,7 @@ async def track_command(message: types.Message):
 
         origin = args[0].strip().upper()
         destination = args[1].strip().upper()
-        dates = [d.strip() for d in args[2].split(",") if d.strip()]
+        dates_raw = [d.strip() for d in args[2].split(",") if d.strip()]
 
         try:
             price_limit = int(args[3])
@@ -148,60 +148,68 @@ async def track_command(message: types.Message):
             )
             return
 
-        added_dates = []
+        added_dates_user = []
         skipped = []  # список кортежей (date, reason)
+        to_start = []  # список параметров для запуска трекеров после уведомления
 
-        for date in dates:
-            # 1) проверка формата/прошлого времени
-            if not is_valid_date(date):
-                skipped.append((date, "неверная дата (формат YYYY-MM-DD или дата в прошлом)"))
+        for date_user in dates_raw:
+            # 1) проверка формата/прошлого времени (ожидаем ДД-ММ-ГГГГ)
+            iso_date = parse_user_date_to_iso(date_user)
+            if not iso_date:
+                skipped.append((date_user, "неверная дата (формат ДД-ММ-ГГГГ или дата в прошлом)"))
                 continue
 
             # 2) проверка наличия слотов
             if allowed_slots <= 0:
-                skipped.append((date, "нет свободных слотов (достигнут лимит)"))
+                skipped.append((date_user, "нет свободных слотов (достигнут лимит)"))
                 continue
 
             # 3) проверка через API (валидность IATA + есть ли рейсы на эту дату)
-            flight = await get_price_for_date(origin, destination, date)
+            flight = await get_price_for_date(origin, destination, iso_date)
             if not flight or (isinstance(flight, dict) and flight.get("error")):
-                skipped.append((date, "рейсы не найдены (проверь IATA-коды и дату)"))
+                skipped.append((date_user, "рейсы не найдены (проверь IATA-коды и дату)"))
                 continue
 
             # 4) проверка дубликата в БД
-            if await db.tracker_exists(user_id, origin, destination, date):
-                skipped.append((date, "уже отслеживается"))
+            if await db.tracker_exists(user_id, origin, destination, iso_date):
+                skipped.append((date_user, "уже отслеживается"))
                 continue
 
             # 5) всё ок — добавляем в БД и запускаем таск
-            tracker_id = await db.add_flight_tracker(user_id, origin, destination, date, price_limit)
+            tracker_id = await db.add_flight_tracker(user_id, origin, destination, iso_date, price_limit)
 
-            user_tasks.setdefault(message.from_user.id, [])
-            task = asyncio.create_task(
-                track_flight(
-                    message.from_user.id,
-                    origin,
-                    destination,
-                    date,
-                    price_limit,
-                    tracker_id=tracker_id,
-                    initial_flight=flight
-                )
-            )
-            user_tasks[message.from_user.id].append(task)
+            # отложим запуск, чтобы сначала отправить статусное сообщение
+            to_start.append((tracker_id, iso_date, flight))
 
-            added_dates.append(date)
+            added_dates_user.append(format_iso_date_to_user(iso_date))
             allowed_slots -= 1
 
         # Ответ пользователю: только по реально добавленным датам
-        if added_dates:
+        if added_dates_user:
             origin_name = get_airport_name(origin) or origin
             destination_name = get_airport_name(destination) or destination
             await message.answer(
                 f"📡 Отслеживаю рейсы <b>{origin_name}</b> → <b>{destination_name}</b>\n"
-                f"Даты: <b>{', '.join(added_dates)}</b>\n"
-                f"Цена ниже <b>{price_limit} {CURRENCY.upper()}</b>"
+                f"Даты: <b>{', '.join(added_dates_user)}</b>\n"
+                f"Цена ниже <b>{format_price(price_limit)} {CURRENCY.upper()}</b>"
             )
+
+            # теперь запускаем трекеры, чтобы предложения пришли после статусного сообщения
+            user_tasks.setdefault(message.from_user.id, [])
+            for tracker_id, iso_date, initial_flight in to_start:
+                task = asyncio.create_task(
+                    track_flight(
+                        message.from_user.id,
+                        origin,
+                        destination,
+                        iso_date,
+                        price_limit,
+                        tracker_id=tracker_id,
+                        initial_flight=initial_flight
+                    )
+                )
+                user_tasks[message.from_user.id].append(task)
+                tracker_tasks[tracker_id] = task
 
         # Сводка по пропущенным датам (если есть)
         if skipped:
@@ -211,7 +219,7 @@ async def track_command(message: types.Message):
     except Exception as e:
         print(f"Ошибка: {e}")
         await message.answer(
-            "❗ Формат команды:\n<code>/track LED KGD 2025-08-04,2025-08-05 7000</code>"
+            "❗ Формат команды:\n<code>/track LED KGD 04-08-2025,05-08-2025 7000</code>"
         )
 
 
@@ -228,9 +236,9 @@ async def tracking_info_handler(message: types.Message):
         "📡 Отслеживание авиарейсов позволяет получать уведомления о снижении цены.\n\n"
         "Введи команду в формате:\n"
         "<code>/track &lt;код_города_вылета&gt; &lt;код_города_прилёта&gt; "
-        "&lt;даты_вылета_через_запятую&gt; &lt;максимальная_цена&gt;</code>\n\n"
+        "&lt;даты_вылета_через_запятую в формате ДД-ММ-ГГГГ&gt; &lt;максимальная_цена&gt;</code>\n\n"
         "Пример:\n"
-        "<code>/track LED KGD 2025-09-08,2025-09-09 7000</code>"
+        "<code>/track LED KGD 08-09-2025,09-09-2025 7000</code>"
     )
 
 
@@ -284,7 +292,7 @@ async def handle_destination_city(message: types.Message, state: FSMContext):
             await state.update_data(destination=iata, destination_options=None)
             await state.set_state(TrackFSM.waiting_dates)
             await message.answer(
-                f"Город прилёта: {label} — {iata}\nВведите даты вылета через запятую в формате YYYY-MM-DD (напр. 2025-09-08,2025-09-09):"
+                f"Город прилёта: {label} — {iata}\nВведите даты вылета через запятую в формате ДД-ММ-ГГГГ (напр. 08-09-2025,09-09-2025):"
             )
             return
 
@@ -298,7 +306,7 @@ async def handle_destination_city(message: types.Message, state: FSMContext):
         await state.update_data(destination=iata)
         await state.set_state(TrackFSM.waiting_dates)
         await message.answer(
-            f"Город прилёта: {label} — {iata}\nВведите даты вылета через запятую в формате YYYY-MM-DD (напр. 2025-09-08,2025-09-09):"
+            f"Город прилёта: {label} — {iata}\nВведите даты вылета через запятую в формате ДД-ММ-ГГГГ (напр. 08-09-2025,09-09-2025):"
         )
         return
     list_text = "Нашёл несколько аэропортов. Выберите номер:\n" + "\n".join(
@@ -314,7 +322,7 @@ async def handle_dates(message: types.Message, state: FSMContext):
     dates = [d.strip() for d in raw.split(",") if d.strip()]
     bad = [d for d in dates if not is_valid_date(d)]
     if not dates or bad:
-        await message.answer("Некорректные даты. Используйте формат YYYY-MM-DD и даты не из прошлого.")
+        await message.answer("Некорректные даты. Используйте формат ДД-ММ-ГГГГ и даты не из прошлого.")
         return
     await state.update_data(dates=dates)
     await message.answer("Введите максимальную цену (целое число):")

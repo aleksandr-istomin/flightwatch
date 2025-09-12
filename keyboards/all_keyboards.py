@@ -22,7 +22,6 @@ search_menu = ReplyKeyboardMarkup(
         ],
         [
             KeyboardButton(text="ℹ Помощь"),
-            KeyboardButton(text="🌍 Коды аэропортов"),
         ],
         [
             KeyboardButton(text="⬅ Назад"),

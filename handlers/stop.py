@@ -2,7 +2,7 @@ import asyncio
 from aiogram import types, Router
 from aiogram.filters import Command
 from db_handlers.db_class import db
-from handlers.task import user_tasks
+from handlers.task import user_tasks, tracker_tasks
 
 router = Router()
 
@@ -29,6 +29,13 @@ async def stop_command(message: types.Message):
                 pass
 
     user_tasks.pop(chat_id, None)
+    # Чистим связанные записи tracker_tasks для этого пользователя
+    try:
+        to_delete = [tid for tid, t in tracker_tasks.items() if t in tasks]
+        for tid in to_delete:
+            tracker_tasks.pop(tid, None)
+    except Exception:
+        pass
 
     await message.answer("❌ Все ваши отслеживания были отключены.")
 

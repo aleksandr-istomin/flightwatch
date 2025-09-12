@@ -1,7 +1,7 @@
 import asyncio
 
 from db_handlers.db_class import db
-from handlers.task import user_tasks
+from handlers.task import user_tasks, tracker_tasks
 from utils.track_flight import track_flight
 
 
@@ -23,3 +23,5 @@ async def restore_all_trackers():
             )
         )
         user_tasks[telegram_id].append(task)
+        # Запоминаем соответствие для точечной остановки
+        tracker_tasks[tracker["tracker_id"]] = task

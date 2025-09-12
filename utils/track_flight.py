@@ -4,6 +4,7 @@ from utils.aviasales_api import get_price_for_date, CURRENCY
 from utils.airport_codes import get_airport_name
 from create_bot import bot
 from db_handlers.db_class import db
+from utils.validators import format_iso_datetime_to_user, format_price, format_iso_date_to_user
 
 
 async def track_flight(telegram_id: int, origin: str, destination: str, date: str,
@@ -37,12 +38,16 @@ async def track_flight(telegram_id: int, origin: str, destination: str, date: st
 
             if should_notify:
                 airline = flight.get("airline", "").upper()
-                departure = flight.get("departure_at", "")
+                departure_iso = flight.get("departure_at", "")
+                departure = format_iso_datetime_to_user(departure_iso)
                 link = flight.get("link", "")
+                price_str = format_price(price_int)
+                # date passed into this coroutine is ISO YYYY-MM-DD; format for user
+                user_date = format_iso_date_to_user(date)
                 message_text = (
                     f"✈️ <b>{get_airport_name(origin)}</b> → <b>{get_airport_name(destination)}</b>\n"
-                    f"📅 Дата: <b>{date}</b>\n"
-                    f"Цена: <b>{price} {CURRENCY.upper()}</b>\n"
+                    f"📅 Дата: <b>{user_date}</b>\n"
+                    f"Цена: <b>{price_str} {CURRENCY.upper()}</b>\n"
                     f"Авиакомпания: <b>{airline}</b>\n"
                     f"Вылет: {departure}\n"
                     f"<a href='https://www.aviasales.ru{link}'>🔗 Купить билет</a>"
