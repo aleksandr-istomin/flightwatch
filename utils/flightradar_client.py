@@ -60,7 +60,6 @@ async def get_flight_status_by_number(flight_number: str) -> Optional[Dict[str, 
                 if isinstance(live_data, list) and len(live_data) > 0:
                     first = live_data[0]
                     active_callsign = safe_get(first, "callsign") or None
-                    # Пытаемся извлечь координаты из разных возможных названий полей
                     lat_value = to_float(
                         safe_get(first, "lat", None)
                         or safe_get(first, "latitude", None)
@@ -91,7 +90,6 @@ async def get_flight_status_by_number(flight_number: str) -> Optional[Dict[str, 
                 if isinstance(summary_data, list) and len(summary_data) > 0:
                     item = summary_data[-1]
 
-                    # Новая схема: плоские поля
                     dep_code = safe_get(item, "orig_icao", "")
                     arr_code = safe_get(item, "dest_icao_actual", "") or safe_get(item, "dest_icao", "")
 
@@ -100,7 +98,6 @@ async def get_flight_status_by_number(flight_number: str) -> Optional[Dict[str, 
                     scheduled_arr = to_str(safe_get(item, "last_seen", None))
                     estimated_arr = to_str(safe_get(item, "datetime_landed", None))
 
-                    # Определение статуса
                     flight_ended = bool(safe_get(item, "flight_ended", False))
                     status = "scheduled"
                     if active_callsign:
@@ -108,7 +105,7 @@ async def get_flight_status_by_number(flight_number: str) -> Optional[Dict[str, 
                     elif flight_ended or (estimated_arr and estimated_arr <= now.isoformat()):
                         status = "landed"
                     elif estimated_dep or scheduled_dep:
-                        # Если взлетел, но еще не закончен
+                        # если взлетел, но еще не закончен
                         if estimated_dep and (not estimated_arr):
                             status = "departed"
                         else:
@@ -148,7 +145,7 @@ async def get_flight_status_by_number(flight_number: str) -> Optional[Dict[str, 
                         result["position"] = {"lat": lat_value, "lon": lon_value}
                     return result
 
-                # Если сводки нет, но есть активная позиция — вернем базовую информацию
+                # если сводки нет, но есть активная позиция — вернем базовую информацию
                 if active_callsign:
                     result: Dict[str, Any] = {
                         "status": "active",
@@ -247,7 +244,6 @@ async def get_flight_history_by_number(flight_number: str, days: int = 14) -> Op
                     number_field = safe_get(item, "flight", "") or safe_get(item, "callsign", "")
                     number_final = number_field or flight_number
 
-                    # Дополнительные поля (если доступны в API)
                     aircraft_model = safe_get(item, "aircraft", "") or safe_get(item, "model", "")
                     aircraft_icao = safe_get(item, "aircraft_icao", "")
                     registration = safe_get(item, "registration", "") or safe_get(item, "reg", "")
@@ -257,12 +253,10 @@ async def get_flight_history_by_number(flight_number: str, days: int = 14) -> Op
                         if distance_val is not None and str(distance_val).strip() != "":
                             # Пытаемся привести к километрам
                             d = float(distance_val)
-                            # Если это уже километры — оставим как есть; ошибок не будет, если это мили, но точность не критична
                             distance_km = int(round(d))
                     except Exception:
                         distance_km = None
 
-                    # Статус/длительность/задержки
                     dt_sched_dep = parse_iso(scheduled_dep)
                     dt_act_dep = parse_iso(actual_dep)
                     dt_sched_arr = parse_iso(scheduled_arr)

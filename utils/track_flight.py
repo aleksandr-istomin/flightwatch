@@ -23,7 +23,7 @@ async def track_flight(telegram_id: int, origin: str, destination: str, date: st
             except Exception:
                 price_int = 0
 
-            # Получаем последнюю отправленную цену по трекеру (если id известен)
+            # получаем последнюю отправленную цену по трекеру (если id известен)
             last_sent = None
             if tracker_id is not None:
                 try:
@@ -42,7 +42,7 @@ async def track_flight(telegram_id: int, origin: str, destination: str, date: st
                 departure = format_iso_datetime_to_user(departure_iso)
                 link = flight.get("link", "")
                 price_str = format_price(price_int)
-                # date passed into this coroutine is ISO YYYY-MM-DD; format for user
+                
                 user_date = format_iso_date_to_user(date)
                 message_text = (
                     f"✈️ <b>{get_airport_name(origin)}</b> → <b>{get_airport_name(destination)}</b>\n"

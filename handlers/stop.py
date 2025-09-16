@@ -29,7 +29,6 @@ async def stop_command(message: types.Message):
                 pass
 
     user_tasks.pop(chat_id, None)
-    # Чистим связанные записи tracker_tasks для этого пользователя
     try:
         to_delete = [tid for tid, t in tracker_tasks.items() if t in tasks]
         for tid in to_delete:

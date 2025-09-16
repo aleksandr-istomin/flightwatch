@@ -32,3 +32,4 @@ async def get_price_for_date(origin: str, destination: str, date_str: str):
     except Exception as e:
         print(f"Ошибка при получении данных: {e}")
         return None
+

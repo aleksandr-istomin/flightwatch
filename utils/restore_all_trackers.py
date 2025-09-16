@@ -23,5 +23,4 @@ async def restore_all_trackers():
             )
         )
         user_tasks[telegram_id].append(task)
-        # Запоминаем соответствие для точечной остановки
         tracker_tasks[tracker["tracker_id"]] = task

@@ -12,3 +12,9 @@ services:
     volumes:
       - ./data/trackers.db:/app/trackers.db
     network_mode: host
+
+
+
+
+
+    

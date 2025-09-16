@@ -19,6 +19,8 @@ router = Router()
 MAX_ACTIVE_TRACKERS = 5
 
 
+
+
 class FlightStatusFSM(StatesGroup):
     waiting_flight_number = State()
 
@@ -79,7 +81,6 @@ async def handle_flight_number(message: types.Message, state: FSMContext):
     dep_label = f"{dep_city} ({dep_name})" if dep_city or dep_name else "—"
     arr_label = f"{arr_city} ({arr_name})" if arr_city or arr_name else "—"
 
-    # Авиакомпания: если в ответе пришёл ICAO-код (3 буквы), маппим на название и страну
     airline_raw = str(flight.get('airline', '') or '').strip()
     airline_line = f"Авиакомпания: {airline_raw}"
     maybe_code = airline_raw.upper()
@@ -102,7 +103,6 @@ async def handle_flight_number(message: types.Message, state: FSMContext):
     )
     await message.answer(text)
 
-    # Если удалось получить текущие координаты самолёта — отправим карту следующим сообщением
     pos = data.get("position") if isinstance(data, dict) else None
     if isinstance(pos, dict):
         lat = pos.get("lat")
@@ -120,7 +120,6 @@ async def handle_flight_number(message: types.Message, state: FSMContext):
                 )
                 await message.answer_photo(map_url, caption="Текущая позиция самолёта")
         except Exception:
-            # Молча игнорируем ошибки с внешним сервисом карт, чтобы не мешать основному сценарию
             pass
 
 
@@ -147,7 +146,6 @@ async def handle_history_flight_number(message: types.Message, state: FSMContext
         await message.answer("⚠️ История рейсов не найдена. Попробуйте другой номер.")
         return
 
-    # Ограничим вывод первыми 12 записями, оформив как в статусе рейса
     lines = []
     count = 0
     for item in history:
@@ -164,7 +162,6 @@ async def handle_history_flight_number(message: types.Message, state: FSMContext
         dep_label = f"{dep_city} ({dep_name})" if dep_city or dep_name else (dep.get('icao', '—'))
         arr_label = f"{arr_city} ({arr_name})" if arr_city or arr_name else (arr.get('icao', '—'))
 
-        # Преобразуем авиакомпанию как в статусе рейса: если пришёл ICAO-код (3 буквы) — маппим на название из Redis
         airline_raw = str(item.get('airline', '') or '').strip()
         airline_line = f"{airline_raw}"
         maybe_code = airline_raw.upper()
@@ -226,7 +223,6 @@ async def handle_history_flight_number(message: types.Message, state: FSMContext
         if count >= 12:
             break
 
-    # Отправляем историю частями, чтобы не превысить лимит Telegram (~4096 символов)
     CHUNK_LIMIT = 3500
     buffer = ""
     for idx, block in enumerate(lines):

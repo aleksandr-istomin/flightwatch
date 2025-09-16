@@ -8,7 +8,7 @@ class Database:
 
     async def connect(self):
         self.db = await aiosqlite.connect(self.db_path)
-        # Чтобы возвращать словари, а не кортежи
+        # чтобы возвращать словари, а не кортежи
         self.db.row_factory = aiosqlite.Row
 
     async def close(self):
@@ -36,14 +36,12 @@ class Database:
                 FOREIGN KEY(user_id) REFERENCES users(id)
             )
         """)
-        # Добавляем колонку last_sent_price при необходимости
         try:
             async with self.db.execute("PRAGMA table_info('flight_trackers')") as cursor:
                 cols = [row[1] async for row in cursor]
             if "last_sent_price" not in cols:
                 await self.db.execute("ALTER TABLE flight_trackers ADD COLUMN last_sent_price INTEGER")
         except Exception:
-            # Тихо игнорируем, если не удалось (например, старая SQLite)
             pass
         await self.db.commit()
 
