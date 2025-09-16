@@ -110,7 +110,6 @@ def get_airport_name(code: str) -> str:
     return airport_names.get(code.upper(), code.upper())
 
 
-# ===== Расширенные утилиты работы с городами/аэропортами =====
 def _normalize_text(value: str) -> str:
     s = (value or "").strip().lower()
     # Приводим разные дефисы/тире к пробелам и убираем редкие символы
